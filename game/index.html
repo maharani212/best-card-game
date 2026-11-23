@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Starfall Duel — a cosmic card battler</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Segoe UI", "DejaVu Sans", Verdana, sans-serif;
+    background: radial-gradient(ellipse at 50% 30%, #1b1040 0%, #0b0620 55%, #050310 100%);
+    color: #eef2ff;
+    overflow: hidden;
+    user-select: none;
+  }
+  /* ---------- starfield ---------- */
+  .stars { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+  .stars i { position: absolute; background: #fff; border-radius: 50%; opacity: .8; animation: tw 2.6s infinite ease-in-out; }
+  @keyframes tw { 0%,100% { opacity: .25; } 50% { opacity: .95; } }
+  #app { position: relative; z-index: 1; height: 100vh; display: flex; flex-direction: column; }
+  .hidden { display: none !important; }
+
+  /* ---------- shared ---------- */
+  .btn {
+    font-family: inherit; font-weight: 800; letter-spacing: .06em;
+    border: none; border-radius: 12px; cursor: pointer; color: #fff;
+    background: linear-gradient(180deg, #ff2e88, #b3125e);
+    padding: 14px 34px; font-size: 20px;
+    box-shadow: 0 6px 24px rgba(255,46,136,.45), inset 0 1px 0 rgba(255,255,255,.35);
+    transition: transform .12s, box-shadow .12s, filter .12s;
+  }
+  .btn:hover { transform: translateY(-2px); filter: brightness(1.12); }
+  .btn:active { transform: translateY(0); }
+  .btn:disabled { filter: grayscale(.8) brightness(.6); cursor: default; transform: none; }
+  .btn.ghost {
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.25);
+    box-shadow: none; font-size: 14px; padding: 8px 16px;
+  }
+
+  /* ---------- title screen ---------- */
+  #titleScreen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 20px; text-align: center; }
+  .logo { font-size: 74px; line-height: 1; filter: drop-shadow(0 0 18px rgba(255,46,136,.8)); }
+  h1.title {
+    font-size: 64px; letter-spacing: .08em; font-weight: 900;
+    background: linear-gradient(90deg, #ffd166, #ff2e88, #7b5cff, #4dd8ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: 0 0 42px rgba(255,46,136,.25);
+  }
+  .subtitle { font-size: 20px; color: #c9d2ff; }
+  .rules {
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.16);
+    border-radius: 14px; padding: 16px 22px; text-align: left; font-size: 16px; line-height: 1.75;
+    max-width: 620px; color: #dfe6ff;
+  }
+  .rules b { color: #ffd166; }
+  .rules .k { display: inline-block; min-width: 26px; }
+
+  /* ---------- game table ---------- */
+  #gameScreen { flex: 1; display: flex; flex-direction: column; padding: 12px 22px 16px; gap: 8px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; }
+  .topbar .brand { font-weight: 900; letter-spacing: .12em; font-size: 17px; color: #ffd166; }
+  .topbar .turn { font-size: 15px; color: #c9d2ff; }
+  .topbar .turn b { color: #fff; }
+  .topbar .controls { display: flex; gap: 8px; }
+
+  .fighter { display: flex; align-items: center; gap: 14px; background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.13); border-radius: 14px; padding: 10px 16px; }
+  .avatar { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 30px; flex: none; border: 2px solid rgba(255,255,255,.35); }
+  .avatar.foe { background: radial-gradient(circle at 35% 30%, #7b2cff, #2a0a5e); }
+  .avatar.you { background: radial-gradient(circle at 35% 30%, #00b4ff, #063a6e); }
+  .fighter .info { flex: 1; min-width: 0; }
+  .fighter .name { font-weight: 800; font-size: 18px; display: flex; gap: 10px; align-items: center; }
+  .shield-badge { font-size: 13px; font-weight: 800; color: #8fe3ff; background: rgba(77,216,255,.15);
+    border: 1px solid rgba(77,216,255,.5); padding: 2px 9px; border-radius: 20px; }
+  .hpbar { height: 20px; background: rgba(0,0,0,.55); border-radius: 10px; overflow: hidden; margin-top: 6px; border: 1px solid rgba(255,255,255,.2); }
+  .hpbar > div { height: 100%; transition: width .35s ease; }
+  .hpbar.foe > div { background: linear-gradient(90deg, #ff2e88, #ff7a3d); }
+  .hpbar.you > div { background: linear-gradient(90deg, #22c55e, #4dd8ff); }
+  .hptext { font-size: 15px; font-weight: 800; margin-top: 3px; color: #fff; }
+  .handcount { display: flex; gap: 4px; align-items: center; }
+  .miniback { width: 26px; height: 36px; border-radius: 4px; background: linear-gradient(160deg, #3b2a7a, #150a33);
+    border: 1px solid #8b7bff; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #c9b8ff; }
+  .deckinfo { font-size: 13px; color: #c9d2ff; text-align: right; line-height: 1.5; }
+
+  #log { min-height: 46px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; }
+  #log .line { font-size: 15px; color: #ffe9a8; }
+  #log .line.dim { color: #9aa7d8; font-size: 13px; }
+
+  .energy-row { display: flex; align-items: center; gap: 10px; justify-content: center; }
+  .energy-label { font-size: 15px; font-weight: 800; color: #ffd166; }
+  .orb { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #ffd166; display: inline-block; }
+  .orb.full { background: radial-gradient(circle at 35% 30%, #fff3b0, #ffb703); box-shadow: 0 0 10px rgba(255,183,3,.8); }
+  .orb.empty { background: rgba(255,255,255,.06); }
+
+  /* ---------- cards ---------- */
+  #hand { display: flex; gap: 12px; justify-content: center; align-items: flex-end; min-height: 218px; padding: 4px 0 2px; }
+  .card {
+    width: 148px; height: 208px; border-radius: 14px; cursor: pointer; position: relative;
+    background: linear-gradient(180deg, #241b4d, #120a2e);
+    border: 2px solid #6d5bd0; box-shadow: 0 8px 22px rgba(0,0,0,.5);
+    display: flex; flex-direction: column; overflow: hidden;
+    transition: transform .14s, box-shadow .14s, filter .14s;
+  }
+  .card:hover { transform: translateY(-12px); box-shadow: 0 16px 30px rgba(123,92,255,.5); }
+  .card.unaffordable { filter: grayscale(.7) brightness(.55); cursor: not-allowed; }
+  .card.unaffordable:hover { transform: none; }
+  .card .cost {
+    position: absolute; top: 8px; left: 8px; width: 34px; height: 34px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ffe27a, #ff9d00);
+    color: #231303; font-weight: 900; font-size: 19px; display: flex; align-items: center; justify-content: center;
+    border: 2px solid #fff3b0; z-index: 2;
+  }
+  .card .art { height: 84px; display: flex; align-items: center; justify-content: center; font-size: 52px;
+    background: radial-gradient(circle at 50% 40%, rgba(255,255,255,.14), transparent 70%); }
+  .card .cname { font-weight: 800; font-size: 15px; text-align: center; padding: 2px 6px; color: #fff; line-height: 1.2; min-height: 38px; display: flex; align-items: center; justify-content: center; }
+  .card .effect { font-size: 12.5px; text-align: center; color: #c9d2ff; padding: 4px 8px 8px; line-height: 1.35; flex: 1; }
+  .card .power { font-size: 22px; font-weight: 900; text-align: center; color: #ffd166; padding-bottom: 8px; }
+  .card.dmg { border-color: #ff5c5c; } .card.dmg .power { color: #ff8a8a; }
+  .card.def { border-color: #4dd8ff; } .card.def .power { color: #8fe3ff; }
+  .card.heal { border-color: #4ade80; } .card.heal .power { color: #86efac; }
+  .card.util { border-color: #c084fc; } .card.util .power { color: #d8b4fe; }
+  .card.playing { animation: playpop .3s ease; }
+  @keyframes playpop { 40% { transform: translateY(-26px) scale(1.06); } }
+  .card.shake { animation: shake .3s ease; }
+  @keyframes shake { 20%,60% { transform: translateX(-6px); } 40%,80% { transform: translateX(6px); } }
+  .empty-hand { color: #9aa7d8; font-size: 15px; padding: 40px 0; }
+
+  .bottombar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .bottombar .spacer { flex: 1; }
+  #endTurnBtn { font-size: 18px; padding: 12px 28px; }
+
+  /* ---------- end screen ---------- */
+  #endScreen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 20px; }
+  #endTitle { font-size: 76px; font-weight: 900; letter-spacing: .06em; }
+  #endTitle.win { color: #ffd166; text-shadow: 0 0 44px rgba(255,209,102,.65); }
+  #endTitle.lose { color: #ff5c5c; text-shadow: 0 0 44px rgba(255,92,92,.55); }
+  #endMsg { font-size: 20px; color: #dfe6ff; max-width: 640px; line-height: 1.6; }
+  #endStats { font-size: 16px; color: #c9d2ff; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.16);
+    border-radius: 12px; padding: 12px 22px; line-height: 1.8; }
+  #endStats b { color: #fff; }
+</style>
+</head>
+<body>
+<div class="stars" id="stars"></div>
+<div id="app">
+
+  <!-- ============ TITLE ============ -->
+  <section id="titleScreen">
+    <div class="logo">✦</div>
+    <h1 class="title">STARFALL DUEL</h1>
+    <div class="subtitle">A cosmic card battler — you against the Nebula Warden</div>
+    <div class="rules">
+      <div><span class="k">★</span> <b>Goal:</b> reduce the Warden's life to 0 before yours runs out. You start at <b>30 life</b>, the Warden at <b>24</b>.</div>
+      <div><span class="k">✦</span> <b>Energy:</b> each turn you gain energy (3, then +1 per turn, max 10). Every card costs energy.</div>
+      <div><span class="k">☄</span> <b>Play:</b> click a card to cast it — damage, shields and healing are all on the table.</div>
+      <div><span class="k">◉</span> <b>Shields</b> block damage, but fade when your next turn begins. Draw a card every turn.</div>
+    </div>
+    <button class="btn" id="startBtn">▶&nbsp; START DUEL</button>
+    <div style="font-size:13px;color:#8b96c9">Original game • no account, no network — just cards and stars</div>
+  </section>
+
+  <!-- ============ GAME TABLE ============ -->
+  <section id="gameScreen" class="hidden">
+    <div class="topbar">
+      <div class="brand">✦ STARFALL DUEL</div>
+      <div class="turn" id="turnLabel">Round <b>1</b> — <b>Your turn</b></div>
+      <div class="controls">
+        <button class="btn ghost" id="soundBtn">🔊 Sound: on</button>
+        <button class="btn ghost" id="restartBtn">↻ Restart</button>
+      </div>
+    </div>
+
+    <div class="fighter">
+      <div class="avatar foe">☄</div>
+      <div class="info">
+        <div class="name">Nebula Warden <span class="shield-badge hidden" id="foeShield">🛡 0</span></div>
+        <div class="hpbar foe"><div id="foeHpFill" style="width:100%"></div></div>
+        <div class="hptext" id="foeHpText">Life 30 / 30</div>
+      </div>
+      <div class="handcount" id="foeHand"></div>
+      <div class="deckinfo" id="foeDeck">Deck 16<br>Discard 0</div>
+    </div>
+
+    <div id="log">
+      <div class="line" id="logMain">Your turn — play a card, then end your turn.</div>
+      <div class="line dim" id="logSub">Click a glowing card to cast it.</div>
+    </div>
+
+    <div class="energy-row" id="energyRow"></div>
+    <div id="hand"></div>
+
+    <div class="bottombar">
+      <div class="fighter" style="flex:1">
+        <div class="avatar you">★</div>
+        <div class="info">
+          <div class="name">Star Captain (you) <span class="shield-badge hidden" id="youShield">🛡 0</span></div>
+          <div class="hpbar you"><div id="youHpFill" style="width:100%"></div></div>
+          <div class="hptext" id="youHpText">Life 30 / 30</div>
+        </div>
+        <div class="deckinfo" id="youDeck">Deck 16<br>Discard 0</div>
+      </div>
+      <button class="btn" id="endTurnBtn">END TURN ➜</button>
+    </div>
+  </section>
+
+  <!-- ============ WIN / LOSS ============ -->
+  <section id="endScreen" class="hidden">
+    <div id="endTitle" class="win">VICTORY!</div>
+    <div id="endMsg"></div>
+    <div id="endStats"></div>
+    <button class="btn" id="againBtn">↻ PLAY AGAIN</button>
+  </section>
+
+</div>
+
+<script>
+"use strict";
+/* ================= Starfall Duel — original card battler =================
+   No libraries, no network. All art is CSS + unicode glyphs drawn by this file.
+   Demo hooks for screenshots (real renders of this game, not mockups):
+     ?demo=table  -> jump into a mid-duel table
+     ?demo=win    -> show the victory screen
+     ?demo=loss   -> show the defeat screen
+*/
+
+/* ---------- card catalogue (original names, art and effects) ---------- */
+const CARDS = [
+  { id: "comet",   name: "Comet Slash",     cost: 1, kind: "dmg",  icon: "☄", power: 2,  desc: "Deal 2 damage to the Warden." },
+  { id: "meteor",  name: "Meteor Strike",   cost: 2, kind: "dmg",  icon: "☄", power: 4,  desc: "Deal 4 damage to the Warden." },
+  { id: "solar",   name: "Solar Flare",     cost: 3, kind: "dmg",  icon: "☀", power: 6,  desc: "Deal 6 damage to the Warden." },
+  { id: "nova",    name: "Nova Blast",      cost: 4, kind: "dmg",  icon: "✦", power: 8,  desc: "Deal 8 damage to the Warden." },
+  { id: "asteroid",name: "Asteroid Barrage",cost: 5, kind: "dmg",  icon: "⬢", power: 10, desc: "Deal 10 damage to the Warden." },
+  { id: "supernova",name:"Supernova",       cost: 6, kind: "dmg",  icon: "✹", power: 12, desc: "Deal 12 damage to the Warden." },
+  { id: "shield",  name: "Star Shield",     cost: 2, kind: "def",  icon: "◉", power: 6,  desc: "Gain 6 shield. Shield blocks damage." },
+  { id: "eclipse", name: "Eclipse Guard",   cost: 3, kind: "util", icon: "☾", power: 3,  desc: "Deal 3 damage and gain 3 shield." },
+  { id: "moonbeam",name: "Moonbeam Heal",   cost: 2, kind: "heal", icon: "☾", power: 5,  desc: "Restore 5 life (up to 30)." },
+  { id: "gravity", name: "Gravity Well",    cost: 1, kind: "util", icon: "◎", power: 1,  desc: "Deal 1 damage and draw 1 card." },
+];
+const byId = Object.fromEntries(CARDS.map(c => [c.id, c]));
+const DECKLIST = ["comet","comet","meteor","meteor","solar","solar","nova","nova","asteroid","asteroid",
+                  "supernova","supernova","shield","shield","eclipse","eclipse","moonbeam","moonbeam","gravity","gravity"];
+
+/* ---------- state ---------- */
+const YOU_HP = 30, FOE_HP = 24, MAX_HAND = 7, MAX_ENERGY = 10;
+let S = null;           // game state
+let soundOn = true, audioCtx = null;
+let busy = false;       // true while the AI is acting
+
+function newState() {
+  return {
+    round: 1, phase: "title", over: false, winner: null,
+    you:  { hp: YOU_HP, shield: 0, energy: 0, hand: [], deck: [], discard: [] },
+    foe:  { hp: FOE_HP, shield: 0, energy: 0, hand: [], deck: [], discard: [] },
+    stats: { played: 0, damageDealt: 0, damageTaken: 0 },
+  };
+}
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+function buildDeck() { return shuffle(DECKLIST.slice()); }
+function drawCard(who) {
+  const p = S[who];
+  if (p.deck.length === 0) {
+    if (p.discard.length === 0) return null;
+    p.deck = shuffle(p.discard.splice(0));
+  }
+  const id = p.deck.pop();
+  if (p.hand.length >= MAX_HAND) return id; // hand full: drawn card is lost
+  p.hand.push(id);
+  return id;
+}
+function energyFor(round) { return Math.min(3 + (round - 1), MAX_ENERGY); }
+
+/* ---------- sound (tiny WebAudio synth; never blocks the game) ---------- */
+function tone(freq, dur, type, vol, when) {
+  if (!soundOn) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const t0 = audioCtx.currentTime + (when || 0);
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type || "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol || 0.07, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t0); o.stop(t0 + dur + 0.02);
+  } catch (e) { /* audio unavailable: game plays on silently */ }
+}
+const sfx = {
+  play:  () => tone(620, 0.09, "triangle", 0.08),
+  hit:   () => { tone(160, 0.16, "sawtooth", 0.09); tone(90, 0.2, "sine", 0.1, 0.02); },
+  shield:() => tone(880, 0.14, "sine", 0.07),
+  heal:  () => { tone(660, 0.12, "sine", 0.07); tone(990, 0.16, "sine", 0.06, 0.09); },
+  draw:  () => tone(440, 0.06, "triangle", 0.05),
+  win:   () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.22, "triangle", 0.09, i * 0.13)),
+  lose:  () => [392, 330, 262, 196].forEach((f, i) => tone(f, 0.26, "sawtooth", 0.07, i * 0.16)),
+};
+
+/* ---------- DOM helpers ---------- */
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+function log(main, sub) {
+  $("logMain").textContent = main;
+  $("logSub").textContent = sub || "";
+}
+
+/* ---------- combat ---------- */
+function dealDamage(target, amount, sourceName) {
+  const p = S[target];
+  let remaining = amount;
+  if (p.shield > 0) {
+    const blocked = Math.min(p.shield, remaining);
+    p.shield -= blocked; remaining -= blocked;
+  }
+  if (remaining > 0) {
+    p.hp = Math.max(0, p.hp - remaining);
+    if (target === "you") S.stats.damageTaken += remaining;
+    else S.stats.damageDealt += remaining;
+  }
+  render();
+  return remaining;
+}
+function gainShield(who, amount) { S[who].shield += amount; render(); }
+function heal(who, amount) { S[who].hp = Math.min(who === "you" ? YOU_HP : FOE_HP, S[who].hp + amount); render(); }
+
+function castCard(who, cardId) {
+  const c = byId[cardId];
+  if (c.kind === "dmg") { dealDamage(who === "you" ? "foe" : "you", c.power); sfx.hit(); }
+  else if (c.kind === "def") { gainShield(who, c.power); sfx.shield(); }
+  else if (c.kind === "heal") { heal(who, c.power); sfx.heal(); }
+  else if (c.kind === "util") {
+    if (cardId === "eclipse") { dealDamage(who === "you" ? "foe" : "you", 3); gainShield(who, 3); sfx.hit(); }
+    if (cardId === "gravity") { dealDamage(who === "you" ? "foe" : "you", 1); drawCard(who); sfx.hit(); }
+  }
+}
+
+function checkEnd() {
+  if (S.over) return true;
+  if (S.foe.hp <= 0) { endGame("you"); return true; }
+  if (S.you.hp <= 0) { endGame("foe"); return true; }
+  return false;
+}
+
+/* ---------- player actions ---------- */
+function playCard(index) {
+  if (!S || S.over || S.phase !== "you" || busy) return;
+  const id = S.you.hand[index];
+  if (!id) return;
+  const c = byId[id];
+  if (c.cost > S.you.energy) {
+    log("Not enough energy for " + c.name + ".", "It costs " + c.cost + " energy — you have " + S.you.energy + ".");
+    const el = document.querySelectorAll("#hand .card")[index];
+    if (el) { el.classList.add("shake"); setTimeout(() => el.classList.remove("shake"), 320); }
+    return;
+  }
+  S.you.energy -= c.cost;
+  S.you.hand.splice(index, 1);
+  S.you.discard.push(id);
+  S.stats.played++;
+  const el = document.querySelectorAll("#hand .card")[index];
+  if (el) el.classList.add("playing");
+  sfx.play();
+  log("You cast " + c.name + " — " + c.desc, "Energy left: " + S.you.energy);
+  setTimeout(() => {
+    castCard("you", id);
+    if (checkEnd()) return;
+    render();
+  }, 160);
+}
+
+async function endTurn() {
+  if (!S || S.over || S.phase !== "you" || busy) return;
+  busy = true;
+  S.phase = "foe";
+  $("endTurnBtn").disabled = true;
+  render();
+  log("The Nebula Warden takes its turn…", "Watch its cards — shields fade at the start of your next turn.");
+  await sleep(650);
+  await aiTurn();
+  busy = false;
+  if (S.over) return;
+  startPlayerTurn();
+}
+
+async function aiTurn() {
+  S.foe.shield = 0;                       // shields fade at the start of the owner's turn
+  S.foe.energy = energyFor(S.round);
+  drawCard("foe"); render();
+  await sleep(500);
+  // Simple, readable heuristic: heal when hurt, shield when fragile, otherwise hit hard.
+  for (let guard = 0; guard < 12; guard++) {
+    if (S.over) return;
+    const playable = S.foe.hand.filter(id => byId[id].cost <= S.foe.energy);
+    if (playable.length === 0) break;
+    let pick = null;
+    if (S.foe.hp <= 12) pick = playable.find(id => id === "moonbeam") || playable.find(id => id === "shield") || playable.find(id => id === "eclipse");
+    if (!pick && S.foe.hp <= 18) pick = playable.find(id => id === "shield") || playable.find(id => id === "eclipse");
+    if (!pick) pick = playable.slice().sort((a, b) => byId[b].power - byId[a].power)[0];
+    const c = byId[pick];
+    S.foe.energy -= c.cost;
+    S.foe.hand.splice(S.foe.hand.indexOf(pick), 1);
+    S.foe.discard.push(pick);
+    log("Warden casts " + c.name + " — " + c.desc, "Its energy left: " + S.foe.energy);
+    castCard("foe", pick);
+    await sleep(750);
+    if (checkEnd()) return;
+    render();
+  }
+  log("The Warden ends its turn.", "Your turn — draw a card and strike back.");
+  await sleep(450);
+}
+
+function startPlayerTurn() {
+  S.phase = "you";
+  S.you.shield = 0;                        // your shield fades at the start of your turn
+  S.you.energy = energyFor(S.round);
+  drawCard("you"); sfx.draw();
+  $("endTurnBtn").disabled = false;
+  log("Round " + S.round + " — your turn. Energy " + S.you.energy + ".", "Play cards, then press END TURN.");
+  render();
+}
+
+/* ---------- game flow ---------- */
+function startGame() {
+  S = newState();
+  S.you.deck = buildDeck(); S.foe.deck = buildDeck();
+  for (let i = 0; i < 4; i++) { drawCard("you"); drawCard("foe"); }
+  S.phase = "you";
+  S.you.energy = energyFor(1);
+  $("titleScreen").classList.add("hidden");
+  $("endScreen").classList.add("hidden");
+  $("gameScreen").classList.remove("hidden");
+  $("endTurnBtn").disabled = false;
+  log("Round 1 — your turn. Energy 3.", "Play cards, then press END TURN.");
+  render();
+}
+
+function endGame(winner) {
+  S.over = true; S.winner = winner;
+  busy = false;
+  $("endTurnBtn").disabled = true;
+  const win = winner === "you";
+  $("endTitle").textContent = win ? "VICTORY!" : "DEFEAT";
+  $("endTitle").className = win ? "win" : "lose";
+  $("endMsg").textContent = win
+    ? "The Nebula Warden's light goes out. Your stars burn brighter — the duel is yours, Star Captain."
+    : "The Nebula Warden's gravity crushes your last star. The duel is lost — but captains always fly again.";
+  $("endStats").innerHTML =
+    "Rounds played: <b>" + S.round + "</b> &nbsp;•&nbsp; Cards cast: <b>" + S.stats.played + "</b><br>" +
+    "Damage dealt: <b>" + S.stats.damageDealt + "</b> &nbsp;•&nbsp; Damage taken: <b>" + S.stats.damageTaken + "</b><br>" +
+    "Your life left: <b>" + S.you.hp + " / " + YOU_HP + "</b>";
+  $("gameScreen").classList.add("hidden");
+  $("endScreen").classList.remove("hidden");
+  if (win) sfx.win(); else sfx.lose();
+}
+
+/* ---------- rendering ---------- */
+function render() {
+  if (!S) return;
+  $("turnLabel").innerHTML = "Round <b>" + S.round + "</b> — <b>" + (S.phase === "you" ? "Your turn" : "Warden's turn") + "</b>";
+  // foe
+  $("foeHpFill").style.width = (S.foe.hp / FOE_HP * 100) + "%";
+  $("foeHpText").textContent = "Life " + S.foe.hp + " / " + FOE_HP;
+  $("foeShield").classList.toggle("hidden", S.foe.shield <= 0);
+  $("foeShield").textContent = "🛡 " + S.foe.shield;
+  $("foeDeck").innerHTML = "Deck " + S.foe.deck.length + "<br>Discard " + S.foe.discard.length;
+  $("foeHand").innerHTML = S.foe.hand.map(() => '<div class="miniback">✦</div>').join("");
+  // you
+  $("youHpFill").style.width = (S.you.hp / YOU_HP * 100) + "%";
+  $("youHpText").textContent = "Life " + S.you.hp + " / " + YOU_HP;
+  $("youShield").classList.toggle("hidden", S.you.shield <= 0);
+  $("youShield").textContent = "🛡 " + S.you.shield;
+  $("youDeck").innerHTML = "Deck " + S.you.deck.length + "<br>Discard " + S.you.discard.length;
+  // energy orbs
+  let orbs = "";
+  for (let i = 0; i < MAX_ENERGY; i++) orbs += '<span class="orb ' + (i < S.you.energy ? "full" : "empty") + '"></span>';
+  $("energyRow").innerHTML = '<span class="energy-label">ENERGY ' + S.you.energy + " / " + MAX_ENERGY + '</span>' + orbs;
+  // hand
+  const handEl = $("hand");
+  if (S.you.hand.length === 0) {
+    handEl.innerHTML = '<div class="empty-hand">Your hand is empty — press END TURN to draw.</div>';
+  } else {
+    handEl.innerHTML = S.you.hand.map((id, i) => {
+      const c = byId[id];
+      const afford = c.cost <= S.you.energy && S.phase === "you" && !S.over;
+      return '<div class="card ' + c.kind + (afford ? "" : " unaffordable") + '" data-i="' + i + '">' +
+        '<div class="cost">' + c.cost + '</div>' +
+        '<div class="art">' + c.icon + '</div>' +
+        '<div class="cname">' + c.name + '</div>' +
+        '<div class="effect">' + c.desc + '</div>' +
+        '<div class="power">' + (c.kind === "def" ? "+" + c.power + " 🛡" : c.kind === "heal" ? "+" + c.power + " ♥" : c.power + " ⚔") + '</div>' +
+        '</div>';
+    }).join("");
+    handEl.querySelectorAll(".card").forEach(el => {
+      el.addEventListener("click", () => playCard(parseInt(el.getAttribute("data-i"), 10)));
+    });
+  }
+}
+
+/* ---------- demo states for real screenshots ---------- */
+function demoTable() {
+  startGame();
+  // A mid-duel table, built by the real game code: round 3, life chipped, 5-card hand.
+  S.round = 3;
+  S.you.hp = 24; S.foe.hp = 18;
+  S.you.energy = 5; S.phase = "you";
+  S.you.hand = ["nova", "meteor", "shield", "gravity", "moonbeam"];
+  S.you.deck = buildDeck().slice(0, 12); S.you.discard = ["comet", "solar"];
+  S.foe.hand = ["meteor", "solar", "shield", "comet"];
+  S.foe.deck = buildDeck().slice(0, 11); S.foe.discard = ["nova"];
+  S.foe.shield = 4;
+  log("Round 3 — your turn. Energy 5.", "Nova Blast is ready — 8 damage for 4 energy.");
+  render();
+}
+function demoEnd(win) {
+  startGame();
+  S.round = win ? 5 : 4;
+  S.stats = { played: win ? 14 : 9, damageDealt: win ? 34 : 19, damageTaken: win ? 11 : 30 };
+  if (win) { S.foe.hp = 0; S.you.hp = 17; } else { S.you.hp = 0; S.foe.hp = 12; }
+  endGame(win ? "you" : "foe");
+}
+
+/* ---------- starfield ---------- */
+(function stars() {
+  const box = $("stars");
+  for (let i = 0; i < 70; i++) {
+    const s = document.createElement("i");
+    const sz = (Math.random() * 2.2 + 1).toFixed(1);
+    s.style.cssText = "left:" + (Math.random() * 100).toFixed(1) + "%;top:" + (Math.random() * 100).toFixed(1) +
+      "%;width:" + sz + "px;height:" + sz + "px;animation-delay:" + (Math.random() * 2.6).toFixed(2) + "s;";
+    box.appendChild(s);
+  }
+})();
+
+/* ---------- wiring ---------- */
+$("startBtn").addEventListener("click", () => { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} startGame(); });
+$("againBtn").addEventListener("click", startGame);
+$("restartBtn").addEventListener("click", startGame);
+$("endTurnBtn").addEventListener("click", () => { if (S && !S.over && S.phase === "you") { S.round++; endTurn(); } });
+$("soundBtn").addEventListener("click", () => { soundOn = !soundOn; $("soundBtn").textContent = soundOn ? "🔊 Sound: on" : "🔇 Sound: off"; });
+
+/* ---------- boot: demo hooks, otherwise the title screen ---------- */
+(function boot() {
+  const q = new URLSearchParams(location.search);
+  const demo = q.get("demo");
+  if (demo === "table") demoTable();
+  else if (demo === "win") demoEnd(true);
+  else if (demo === "loss") demoEnd(false);
+})();
+</script>
+</body>
+</html>
